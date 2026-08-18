@@ -5,7 +5,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/site/Layout";
 import { toast } from "sonner";
 import { Loader2, User as UserIcon, KeyRound, Fingerprint, Trash2 } from "lucide-react";
-import { useServerFn } from "@tanstack/react-start";
 import { getRegistrationOptions, verifyRegistration, listMyCredentials, deleteCredential } from "@/lib/webauthn.functions";
 
 export const Route = createFileRoute("/account")({ component: AccountPage });
@@ -22,13 +21,9 @@ function AccountPage() {
   const [savingPwd, setSavingPwd] = useState(false);
   const [creds, setCreds] = useState<{ id: string; created_at: string }[]>([]);
   const [enrolling, setEnrolling] = useState(false);
-  const getOpts = useServerFn(getRegistrationOptions);
-  const verifyReg = useServerFn(verifyRegistration);
-  const listCreds = useServerFn(listMyCredentials);
-  const delCred = useServerFn(deleteCredential);
 
   const loadCreds = async () => {
-    try { setCreds(await listCreds({ data: {} as any })); } catch { /* noop */ }
+    try { setCreds((await listMyCredentials()) as any); } catch { /* noop */ }
   };
   useEffect(() => { if (user) loadCreds(); }, [user]);
 
@@ -36,9 +31,9 @@ function AccountPage() {
     setEnrolling(true);
     try {
       const { startRegistration } = await import("@simplewebauthn/browser");
-      const options = await getOpts({ data: {} as any });
+      const options = await getRegistrationOptions();
       const response = await startRegistration({ optionsJSON: options as any });
-      await verifyReg({ data: { response } });
+      await verifyRegistration({ response });
       toast.success("Fingerprint enabled");
       loadCreds();
     } catch (e: any) {
@@ -48,7 +43,7 @@ function AccountPage() {
 
   const removeCred = async (id: string) => {
     if (!window.confirm("Remove this fingerprint device?")) return;
-    await delCred({ data: { id } });
+    await deleteCredential({ id });
     toast.success("Removed");
     loadCreds();
   };

@@ -4,7 +4,6 @@ import { useState } from "react";
 import { PageHeader } from "@/components/site/Layout";
 import { supabase } from "@/integrations/supabase/client";
 import { Fingerprint } from "lucide-react";
-import { useServerFn } from "@tanstack/react-start";
 import { getAuthenticationOptions, verifyAuthentication } from "@/lib/webauthn.functions";
 
 import { useAuth } from "@/lib/auth";
@@ -18,8 +17,6 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [fpLoading, setFpLoading] = useState(false);
-  const getAuthOpts = useServerFn(getAuthenticationOptions);
-  const verifyAuth = useServerFn(verifyAuthentication);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,9 +40,9 @@ function LoginPage() {
     setFpLoading(true);
     try {
       const { startAuthentication } = await import("@simplewebauthn/browser");
-      const options = await getAuthOpts({ data: { email } });
+      const options = await getAuthenticationOptions({ email });
       const response = await startAuthentication({ optionsJSON: options as any });
-      const { token_hash } = await verifyAuth({ data: { email, response } });
+      const { token_hash } = await verifyAuthentication({ email, response });
       const { error, data } = await supabase.auth.verifyOtp({ token_hash, type: "magiclink" });
       if (error || !data.user) throw new Error(error?.message ?? "Sign-in failed");
       toast.success("Signed in with fingerprint");
