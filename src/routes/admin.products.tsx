@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Pencil, Plus, Trash2, Upload, X } from "lucide-react";
+import { Eye, Image as ImageIcon, Pencil, Plus, Trash2, Upload, X, RefreshCw } from "lucide-react";
 import { formatPKR } from "@/lib/products";
 
 export const Route = createFileRoute("/admin/products")({ component: AdminProducts });
@@ -12,11 +12,61 @@ type Category = { id: string; name: string };
 
 const empty: Omit<Product, "id"> = { name: "", slug: "", description: "", price: 0, old_price: null, category_id: null, image_url: "", stock: 0, featured: false, images: [] };
 
+// Convert any uploaded image into a perfect 1:1 800x800 square image with crisp padding/cropping
+function processImageToSquare(file: File, fitMode: "contain" | "cover" = "contain", targetSize = 800): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement("canvas");
+      canvas.width = targetSize;
+      canvas.height = targetSize;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject(new Error("Could not get canvas context"));
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, targetSize, targetSize);
+
+      let dx = 0, dy = 0, dw = targetSize, dh = targetSize;
+      const aspect = img.width / img.height;
+
+      if (fitMode === "contain") {
+        if (aspect > 1) {
+          dh = targetSize / aspect;
+          dy = (targetSize - dh) / 2;
+        } else {
+          dw = targetSize * aspect;
+          dx = (targetSize - dw) / 2;
+        }
+      } else {
+        if (aspect > 1) {
+          dw = targetSize * aspect;
+          dx = (targetSize - dw) / 2;
+        } else {
+          dh = targetSize / aspect;
+          dy = (targetSize - dh) / 2;
+        }
+      }
+
+      ctx.drawImage(img, dx, dy, dw, dh);
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Canvas conversion failed"));
+      }, "image/jpeg", 0.92);
+    };
+    img.onerror = () => reject(new Error("Failed to load image"));
+    img.src = url;
+  });
+}
+
 function AdminProducts() {
   const [items, setItems] = useState<Product[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
   const [editing, setEditing] = useState<Partial<Product> | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [fitMode, setFitMode] = useState<"contain" | "cover">("contain");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -41,8 +91,9 @@ function AdminProducts() {
       ? await supabase.from("products").update(payload).eq("id", id)
       : await supabase.from("products").insert(payload);
     if (error) return toast.error(error.message);
-    toast.success("Saved");
+    toast.success("Product saved successfully!");
     setEditing(null);
+    setPreviewUrl(null);
     load();
   };
 
@@ -62,95 +113,188 @@ function AdminProducts() {
     const picks = Array.from(files).slice(0, room);
     setUploading(true);
     const uploaded: string[] = [];
-    for (const f of picks) {
-      const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${f.name.replace(/[^a-zA-Z0-9.\-_]/g, "_")}`;
-      const { error } = await supabase.storage.from("product-images").upload(path, f, { cacheControl: "3600", upsert: false });
-      if (error) { toast.error(error.message); continue; }
-      const { data } = supabase.storage.from("product-images").getPublicUrl(path);
-      uploaded.push(data.publicUrl);
+    try {
+      for (const f of picks) {
+        // Process & crop image into uniform 800x800 square
+        const processedBlob = await processImageToSquare(f, fitMode, 800);
+        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+        const { error } = await supabase.storage.from("product-images").upload(fileName, processedBlob, { contentType: "image/jpeg", cacheControl: "3600", upsert: false });
+        if (error) { toast.error(error.message); continue; }
+        const { data } = supabase.storage.from("product-images").getPublicUrl(fileName);
+        uploaded.push(data.publicUrl);
+      }
+      const next = [...current, ...uploaded];
+      const mainImg = editing.image_url || next[0] || "";
+      setEditing({ ...editing, images: next, image_url: mainImg });
+      setPreviewUrl(mainImg);
+      toast.success("Image auto-cropped to square 1:1 and uploaded!");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Image processing failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
     }
-    const next = [...current, ...uploaded];
-    setEditing({ ...editing, images: next, image_url: editing.image_url || next[0] || "" });
-    setUploading(false);
-    if (fileRef.current) fileRef.current.value = "";
   };
 
   const removeImage = (url: string) => {
     if (!editing) return;
     const next = (editing.images ?? []).filter((u) => u !== url);
-    setEditing({ ...editing, images: next, image_url: editing.image_url === url ? (next[0] ?? "") : editing.image_url });
+    const mainImg = editing.image_url === url ? (next[0] ?? "") : editing.image_url;
+    setEditing({ ...editing, images: next, image_url: mainImg });
+    setPreviewUrl(mainImg || null);
   };
+
+  const selectedMain = editing?.image_url || previewUrl || editing?.images?.[0] || "";
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h1 className="font-display text-3xl font-bold">Products</h1>
-        <button onClick={() => setEditing({ ...empty })} className="bg-primary text-primary-foreground px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2"><Plus className="w-4 h-4" /> Add Product</button>
+        <div>
+          <h1 className="font-display text-3xl font-bold">Products Catalog</h1>
+          <p className="text-xs text-muted-foreground">Manage store products, images & inventory</p>
+        </div>
+        <button onClick={() => { setEditing({ ...empty }); setPreviewUrl(null); }} className="bg-primary text-primary-foreground px-5 py-2.5 rounded-full text-sm font-semibold flex items-center gap-2 shadow-lg hover:opacity-90 transition"><Plus className="w-4 h-4" /> Add Product</button>
       </div>
-      <div className="bg-card border rounded-2xl overflow-x-auto">
+
+      <div className="bg-card border rounded-2xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm min-w-[640px]">
-          <thead className="bg-muted/50 text-left"><tr><th className="p-3">Name</th><th className="p-3">Price</th><th className="p-3">Stock</th><th className="p-3">Featured</th><th className="p-3 text-right">Actions</th></tr></thead>
+          <thead className="bg-muted/50 text-left">
+            <tr>
+              <th className="p-3">Image</th>
+              <th className="p-3">Name</th>
+              <th className="p-3">Price</th>
+              <th className="p-3">Stock</th>
+              <th className="p-3">Featured</th>
+              <th className="p-3 text-right">Actions</th>
+            </tr>
+          </thead>
           <tbody>
             {items.map((p) => (
-              <tr key={p.id} className="border-t">
-                <td className="p-3 font-medium">{p.name}</td>
-                <td className="p-3">{formatPKR(p.price)}</td>
+              <tr key={p.id} className="border-t hover:bg-muted/30 transition">
+                <td className="p-3">
+                  <div className="w-12 h-12 rounded-lg border overflow-hidden bg-white p-1 flex items-center justify-center">
+                    {p.image_url ? (
+                      <img src={p.image_url} alt="" className="w-full h-full object-contain" />
+                    ) : (
+                      <ImageIcon className="w-5 h-5 text-muted-foreground/50" />
+                    )}
+                  </div>
+                </td>
+                <td className="p-3 font-semibold">{p.name}</td>
+                <td className="p-3 font-medium text-primary">{formatPKR(p.price)}</td>
                 <td className="p-3">{p.stock}</td>
-                <td className="p-3">{p.featured ? "Yes" : "No"}</td>
+                <td className="p-3">{p.featured ? <span className="px-2 py-0.5 text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-full font-medium">Featured</span> : "No"}</td>
                 <td className="p-3 text-right">
-                  <button onClick={() => setEditing(p)} className="p-2 hover:text-primary"><Pencil className="w-4 h-4" /></button>
-                  <button onClick={() => del(p.id)} className="p-2 hover:text-destructive"><Trash2 className="w-4 h-4" /></button>
+                  <button onClick={() => { setEditing(p); setPreviewUrl(p.image_url); }} className="p-2 hover:text-primary transition" title="Edit"><Pencil className="w-4 h-4" /></button>
+                  <button onClick={() => del(p.id)} className="p-2 hover:text-destructive transition" title="Delete"><Trash2 className="w-4 h-4" /></button>
                 </td>
               </tr>
             ))}
-            {items.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">No products yet. Add your first one.</td></tr>}
+            {items.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No products yet. Add your first one.</td></tr>}
           </tbody>
         </table>
       </div>
 
       {editing && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setEditing(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-background rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-auto">
-            <h2 className="font-display text-xl font-bold mb-4">{editing.id ? "Edit Product" : "New Product"}</h2>
-            <div className="space-y-3">
-              <In label="Name" value={editing.name ?? ""} onChange={(v) => setEditing({ ...editing, name: v })} />
-              <In label="Slug (optional)" value={editing.slug ?? ""} onChange={(v) => setEditing({ ...editing, slug: v })} />
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setEditing(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-background rounded-3xl p-6 w-full max-w-2xl max-h-[90vh] overflow-auto border shadow-2xl space-y-5">
+            <div className="flex justify-between items-center border-b pb-3">
               <div>
-                <div className="text-sm font-medium mb-1">Product Images (max 5)</div>
-                <div className="grid grid-cols-5 gap-2 mb-2">
-                  {(editing.images ?? []).map((url) => (
-                    <div key={url} className="relative aspect-square rounded-lg overflow-hidden border bg-muted">
-                      <img src={url} alt="" className="w-full h-full object-cover" />
-                      <button type="button" onClick={() => removeImage(url)} className="absolute top-1 right-1 bg-black/70 text-white rounded-full p-0.5"><X className="w-3 h-3" /></button>
-                    </div>
-                  ))}
-                  {(editing.images?.length ?? 0) < 5 && (
-                    <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} className="aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center text-xs text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50">
-                      <Upload className="w-4 h-4 mb-1" />{uploading ? "..." : "Add"}
-                    </button>
-                  )}
-                </div>
-                <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => onUpload(e.target.files)} />
-                <div className="text-xs text-muted-foreground">{(editing.images?.length ?? 0)}/5 uploaded. First image is the main display image.</div>
+                <h2 className="font-display text-xl font-bold">{editing.id ? "Edit Product" : "New Product"}</h2>
+                <p className="text-xs text-muted-foreground">Upload 1:1 square pictures with live preview</p>
               </div>
-              <In label="Or paste Main Image URL" value={editing.image_url ?? ""} onChange={(v) => setEditing({ ...editing, image_url: v })} />
-              <label className="block text-sm"><span className="font-medium">Description</span><textarea value={editing.description ?? ""} onChange={(e) => setEditing({ ...editing, description: e.target.value })} className="mt-1 w-full px-3 py-2 rounded-lg border bg-background" rows={3} /></label>
-              <div className="grid grid-cols-2 gap-3">
-                <In label="Price (PKR)" type="number" value={String(editing.price ?? 0)} onChange={(v) => setEditing({ ...editing, price: Number(v) })} />
-                <In label="Old Price" type="number" value={String(editing.old_price ?? "")} onChange={(v) => setEditing({ ...editing, old_price: v ? Number(v) : null })} />
-                <In label="Stock" type="number" value={String(editing.stock ?? 0)} onChange={(v) => setEditing({ ...editing, stock: Number(v) })} />
-                <label className="block text-sm"><span className="font-medium">Category</span>
-                  <select value={editing.category_id ?? ""} onChange={(e) => setEditing({ ...editing, category_id: e.target.value || null })} className="mt-1 w-full px-3 py-2 rounded-lg border bg-background">
-                    <option value="">— none —</option>
-                    {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+              <button onClick={() => setEditing(null)} className="p-1 rounded-full hover:bg-muted"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Left Column: Form Fields */}
+              <div className="space-y-3">
+                <In label="Product Name" value={editing.name ?? ""} onChange={(v) => setEditing({ ...editing, name: v })} />
+                <In label="Slug (optional)" value={editing.slug ?? ""} onChange={(v) => setEditing({ ...editing, slug: v })} />
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <In label="Price (PKR)" type="number" value={String(editing.price ?? 0)} onChange={(v) => setEditing({ ...editing, price: Number(v) })} />
+                  <In label="Old Price" type="number" value={String(editing.old_price ?? "")} onChange={(v) => setEditing({ ...editing, old_price: v ? Number(v) : null })} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <In label="Stock Quantity" type="number" value={String(editing.stock ?? 0)} onChange={(v) => setEditing({ ...editing, stock: Number(v) })} />
+                  <label className="block text-xs font-semibold"><span>Category</span>
+                    <select value={editing.category_id ?? ""} onChange={(e) => setEditing({ ...editing, category_id: e.target.value || null })} className="mt-1 w-full px-3 py-2 rounded-xl border bg-background text-sm">
+                      <option value="">— Select Category —</option>
+                      {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </label>
+                </div>
+
+                <label className="block text-xs font-semibold">
+                  <span>Product Description</span>
+                  <textarea value={editing.description ?? ""} onChange={(e) => setEditing({ ...editing, description: e.target.value })} className="mt-1 w-full px-3 py-2 rounded-xl border bg-background text-sm" rows={3} placeholder="Add product details, model specs..." />
+                </label>
+
+                <label className="flex items-center gap-2 text-sm font-medium pt-1">
+                  <input type="checkbox" checked={!!editing.featured} onChange={(e) => setEditing({ ...editing, featured: e.target.checked })} className="rounded" /> Featured Product on Home Page
                 </label>
               </div>
-              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!editing.featured} onChange={(e) => setEditing({ ...editing, featured: e.target.checked })} /> Featured</label>
-              <div className="flex gap-2 pt-2">
-                <button onClick={save} className="flex-1 bg-primary text-primary-foreground py-2 rounded-full font-semibold">Save</button>
-                <button onClick={() => setEditing(null)} className="px-4 py-2 rounded-full border">Cancel</button>
+
+              {/* Right Column: Live 1:1 Image Preview & Crop Controls */}
+              <div className="space-y-4 bg-muted/30 p-4 rounded-2xl border">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><Eye className="w-4 h-4 text-primary" /> Live 1:1 Card Preview</span>
+                  <div className="flex items-center gap-1 text-xs">
+                    <span className="text-muted-foreground">Fit Mode:</span>
+                    <button type="button" onClick={() => setFitMode("contain")} className={`px-2 py-0.5 rounded ${fitMode === "contain" ? "bg-primary text-primary-foreground font-semibold" : "bg-muted"}`}>Fit</button>
+                    <button type="button" onClick={() => setFitMode("cover")} className={`px-2 py-0.5 rounded ${fitMode === "cover" ? "bg-primary text-primary-foreground font-semibold" : "bg-muted"}`}>Crop</button>
+                  </div>
+                </div>
+
+                {/* 1:1 Square Preview Box */}
+                <div className="aspect-square w-full rounded-2xl border bg-white shadow-inner overflow-hidden relative flex items-center justify-center p-2 group">
+                  {selectedMain ? (
+                    <img src={selectedMain} alt="Live Preview" className={`w-full h-full object-${fitMode} transition-all duration-300`} />
+                  ) : (
+                    <div className="text-center p-4">
+                      <ImageIcon className="w-10 h-10 text-muted-foreground/40 mx-auto mb-2" />
+                      <div className="text-xs text-muted-foreground">No Image Selected</div>
+                      <div className="text-[10px] text-muted-foreground/60 mt-1">Upload a picture below for live preview</div>
+                    </div>
+                  )}
+                  {selectedMain && (
+                    <div className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] px-2 py-0.5 rounded-full backdrop-blur">
+                      Square 1:1 Uniform Preview
+                    </div>
+                  )}
+                </div>
+
+                {/* Image Upload / URL Controls */}
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold">Upload Product Images (Max 5)</div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {(editing.images ?? []).map((url) => (
+                      <div key={url} onClick={() => { setEditing({ ...editing, image_url: url }); setPreviewUrl(url); }} className={`relative aspect-square rounded-xl overflow-hidden border-2 cursor-pointer bg-white p-0.5 ${editing.image_url === url ? "border-primary ring-2 ring-primary/20" : "border-muted"}`}>
+                        <img src={url} alt="" className="w-full h-full object-contain" />
+                        <button type="button" onClick={(e) => { e.stopPropagation(); removeImage(url); }} className="absolute top-0.5 right-0.5 bg-black/80 text-white rounded-full p-0.5 hover:bg-red-600 transition"><X className="w-3 h-3" /></button>
+                      </div>
+                    ))}
+                    {(editing.images?.length ?? 0) < 5 && (
+                      <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} className="aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center text-[10px] text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50 transition bg-background">
+                        {uploading ? <RefreshCw className="w-4 h-4 animate-spin mb-1 text-primary" /> : <Upload className="w-4 h-4 mb-1" />}
+                        {uploading ? "Auto 1:1..." : "Upload"}
+                      </button>
+                    )}
+                  </div>
+                  <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => onUpload(e.target.files)} />
+
+                  <div className="pt-2">
+                    <In label="Or Paste Direct Image URL" value={editing.image_url ?? ""} onChange={(v) => { setEditing({ ...editing, image_url: v }); setPreviewUrl(v); }} />
+                  </div>
+                </div>
               </div>
+            </div>
+
+            <div className="flex gap-3 pt-3 border-t">
+              <button onClick={save} className="flex-1 bg-primary text-primary-foreground py-2.5 rounded-full font-semibold hover:opacity-90 transition">Save Product</button>
+              <button onClick={() => setEditing(null)} className="px-6 py-2.5 rounded-full border hover:bg-muted transition">Cancel</button>
             </div>
           </div>
         </div>
@@ -161,9 +305,9 @@ function AdminProducts() {
 
 function In({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
   return (
-    <label className="block text-sm">
-      <span className="font-medium">{label}</span>
-      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border bg-background" />
+    <label className="block text-xs font-semibold">
+      <span>{label}</span>
+      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-xl border bg-background text-sm font-normal" />
     </label>
   );
 }

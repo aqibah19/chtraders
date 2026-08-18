@@ -25,7 +25,7 @@ export function ProductCard({ product, i = 0 }: { product: Product; i?: number }
       <Link to="/product/$id" params={{ id: product.id }} className="block">
         <div className="aspect-square relative overflow-hidden">
           <div className="absolute inset-0 group-hover:scale-110 transition-transform duration-700">
-            <ProductImage category={product.category} size="lg" src={dbImg} />
+            <ProductImage category={product.category} size="lg" src={product.image || dbImg} />
           </div>
           {product.badge && (
             <span className="absolute top-3 left-3 bg-primary text-primary-foreground text-[10px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wide">

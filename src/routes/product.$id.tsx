@@ -75,7 +75,7 @@ function ProductPage() {
           ) : (
             <div className="aspect-square rounded-3xl overflow-hidden border bg-muted" onMouseEnter={() => setZoom(true)} onMouseLeave={() => setZoom(false)}>
               <div className={`w-full h-full transition-transform duration-500 ${zoom ? "scale-110" : "scale-100"}`}>
-                <ProductImage category={p.category} size="lg" src={dbImg} fit="contain" />
+                <ProductImage category={p.category} size="lg" src={p.image || dbImg} fit="contain" />
               </div>
             </div>
           )}
@@ -95,7 +95,10 @@ function ProductPage() {
         </motion.div>
         <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}>
           <div className="text-xs uppercase tracking-[0.2em] text-primary">{p.category.replace(/-/g, " ")}</div>
-          <h1 className="font-display text-3xl md:text-4xl font-bold mt-2">{p.name}</h1>
+          <div className="flex items-center gap-3 mt-2">
+            <h1 className="font-display text-3xl md:text-4xl font-bold">{p.name}</h1>
+            {p.model && <span className="bg-muted border text-foreground text-xs font-semibold px-3 py-1 rounded-full">Model: {p.model}</span>}
+          </div>
           <div className="flex items-center gap-3 mt-3">
             <div className="flex">{[1,2,3,4,5].map((s) => <Star key={s} className={`w-4 h-4 ${s <= Math.round(p.rating) ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30"}`} />)}</div>
             <span className="text-sm text-muted-foreground">{p.rating} ({p.reviews} reviews)</span>
