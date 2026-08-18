@@ -2,8 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Eye, Image as ImageIcon, Pencil, Plus, Trash2, Upload, X, RefreshCw } from "lucide-react";
-import { formatPKR } from "@/lib/products";
+import { Eye, Image as ImageIcon, Pencil, Plus, Trash2, Upload, X, RefreshCw, Database } from "lucide-react";
+import { formatPKR, products as staticCatalogProducts } from "@/lib/products";
 
 export const Route = createFileRoute("/admin/products")({ component: AdminProducts });
 
@@ -65,6 +65,7 @@ function AdminProducts() {
   const [cats, setCats] = useState<Category[]>([]);
   const [editing, setEditing] = useState<Partial<Product> | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [fitMode, setFitMode] = useState<"contain" | "cover">("contain");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -79,29 +80,85 @@ function AdminProducts() {
   };
   useEffect(() => { load(); }, []);
 
+  // Merge DB products with static 39 catalog products so all products are ALWAYS shown
+  const staticAsAdminItems: Product[] = staticCatalogProducts.map((p) => ({
+    id: p.id,
+    name: p.name,
+    slug: p.id,
+    description: p.description,
+    price: p.price,
+    old_price: p.oldPrice ?? null,
+    category_id: null,
+    image_url: p.image ?? null,
+    stock: 25,
+    featured: !!p.badge,
+    images: p.image ? [p.image] : [],
+  }));
+
+  const displayItems = [...items];
+  staticAsAdminItems.forEach((sp) => {
+    if (!displayItems.some((dbP) => dbP.slug === sp.slug || dbP.id === sp.id)) {
+      displayItems.push(sp);
+    }
+  });
+
   const save = async () => {
     if (!editing) return;
     const { id, created_at, updated_at, ...rest } = editing as any;
+    const slug = rest.slug || rest.name?.toLowerCase().replace(/\s+/g, "-");
     const payload: any = {
       ...rest,
-      slug: rest.slug || rest.name?.toLowerCase().replace(/\s+/g, "-"),
+      slug,
       images: rest.images ?? [],
     };
-    const { error } = id
+    
+    // Check if updating existing DB record or inserting
+    const isRealUuid = id && id.length > 20 && id.includes("-");
+    const { error } = isRealUuid
       ? await supabase.from("products").update(payload).eq("id", id)
-      : await supabase.from("products").insert(payload);
+      : await supabase.from("products").upsert(payload, { onConflict: "slug" });
+      
     if (error) return toast.error(error.message);
-    toast.success("Product saved successfully!");
+    toast.success("Product saved to database!");
     setEditing(null);
     setPreviewUrl(null);
     load();
   };
 
+  const syncAllToDb = async () => {
+    setSyncing(true);
+    try {
+      const payload = staticCatalogProducts.map((p) => ({
+        name: p.name,
+        slug: p.id,
+        description: p.description,
+        price: p.price,
+        old_price: p.oldPrice ?? null,
+        image_url: p.image ?? null,
+        stock: 25,
+        featured: !!p.badge,
+        images: p.image ? [p.image] : [],
+      }));
+      const { error } = await supabase.from("products").upsert(payload, { onConflict: "slug" });
+      if (error) throw error;
+      toast.success("All 39 catalog products synced to Supabase Database!");
+      load();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const del = async (id: string) => {
     if (!confirm("Delete this product?")) return;
-    const { error } = await supabase.from("products").delete().eq("id", id);
-    if (error) return toast.error(error.message);
-    toast.success("Deleted");
+    const isRealUuid = id && id.length > 20 && id.includes("-");
+    if (isRealUuid) {
+      const { error } = await supabase.from("products").delete().eq("id", id);
+      if (error) return toast.error(error.message);
+    }
+    toast.success("Removed");
+    setItems((prev) => prev.filter((x) => x.id !== id));
     load();
   };
 
@@ -115,7 +172,6 @@ function AdminProducts() {
     const uploaded: string[] = [];
     try {
       for (const f of picks) {
-        // Process & crop image into uniform 800x800 square
         const processedBlob = await processImageToSquare(f, fitMode, 800);
         const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
         const { error } = await supabase.storage.from("product-images").upload(fileName, processedBlob, { contentType: "image/jpeg", cacheControl: "3600", upsert: false });
@@ -148,12 +204,18 @@ function AdminProducts() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-3">
         <div>
-          <h1 className="font-display text-3xl font-bold">Products Catalog</h1>
-          <p className="text-xs text-muted-foreground">Manage store products, images & inventory</p>
+          <h1 className="font-display text-3xl font-bold">Products Catalog ({displayItems.length})</h1>
+          <p className="text-xs text-muted-foreground">Manage all {displayItems.length} store products, images & inventory</p>
         </div>
-        <button onClick={() => { setEditing({ ...empty }); setPreviewUrl(null); }} className="bg-primary text-primary-foreground px-5 py-2.5 rounded-full text-sm font-semibold flex items-center gap-2 shadow-lg hover:opacity-90 transition"><Plus className="w-4 h-4" /> Add Product</button>
+        <div className="flex items-center gap-2">
+          <button onClick={syncAllToDb} disabled={syncing} className="bg-muted hover:bg-muted/80 text-foreground px-4 py-2.5 rounded-full text-xs font-semibold flex items-center gap-2 border transition disabled:opacity-50">
+            {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5 text-primary" />}
+            {syncing ? "Syncing..." : "Sync All 39 to Database"}
+          </button>
+          <button onClick={() => { setEditing({ ...empty }); setPreviewUrl(null); }} className="bg-primary text-primary-foreground px-5 py-2.5 rounded-full text-sm font-semibold flex items-center gap-2 shadow-lg hover:opacity-90 transition"><Plus className="w-4 h-4" /> Add Product</button>
+        </div>
       </div>
 
       <div className="bg-card border rounded-2xl overflow-x-auto shadow-sm">
@@ -169,7 +231,7 @@ function AdminProducts() {
             </tr>
           </thead>
           <tbody>
-            {items.map((p) => (
+            {displayItems.map((p) => (
               <tr key={p.id} className="border-t hover:bg-muted/30 transition">
                 <td className="p-3">
                   <div className="w-12 h-12 rounded-lg border overflow-hidden bg-white p-1 flex items-center justify-center">
@@ -190,7 +252,7 @@ function AdminProducts() {
                 </td>
               </tr>
             ))}
-            {items.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No products yet. Add your first one.</td></tr>}
+            {displayItems.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No products found.</td></tr>}
           </tbody>
         </table>
       </div>
