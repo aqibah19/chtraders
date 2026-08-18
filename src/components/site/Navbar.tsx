@@ -35,7 +35,7 @@ export function Navbar() {
   useEffect(() => setOpen(false), [path]);
 
   return (
-    <div className="sticky top-0 z-50 w-full">
+    <div className="fixed top-0 left-0 right-0 z-50 w-full shadow-sm">
       <div className="bg-primary text-primary-foreground text-xs">
         <div className="container mx-auto flex flex-wrap justify-between gap-2 px-4 py-2">
           <span>Free delivery on orders over Rs 10,000 • Railway Road Gujrat</span>
