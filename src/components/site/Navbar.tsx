@@ -35,7 +35,7 @@ export function Navbar() {
   useEffect(() => setOpen(false), [path]);
 
   return (
-    <>
+    <div className="sticky top-0 z-50 w-full">
       <div className="bg-primary text-primary-foreground text-xs">
         <div className="container mx-auto flex flex-wrap justify-between gap-2 px-4 py-2">
           <span>Free delivery on orders over Rs 10,000 • Railway Road Gujrat</span>
@@ -44,8 +44,8 @@ export function Navbar() {
       </div>
       <motion.header
         initial={false}
-        animate={{ paddingTop: scrolled ? 8 : 14, paddingBottom: scrolled ? 8 : 14 }}
-        className={`sticky top-0 z-40 transition-colors ${scrolled ? "glass shadow-sm" : "bg-background"}`}
+        animate={{ paddingTop: scrolled ? 8 : 12, paddingBottom: scrolled ? 8 : 12 }}
+        className={`transition-all border-b ${scrolled ? "bg-background/95 backdrop-blur-md shadow-md" : "bg-background/90 backdrop-blur-sm"}`}
       >
         <div className="container mx-auto flex items-center gap-6 px-4">
           <Link to="/" className="flex items-center gap-2 group">
@@ -129,6 +129,6 @@ export function Navbar() {
           )}
         </AnimatePresence>
       </motion.header>
-    </>
+    </div>
   );
 }
