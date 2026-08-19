@@ -223,10 +223,6 @@ function AdminProducts() {
           <p className="text-xs text-muted-foreground">Manage all {displayItems.length} store products, images & inventory</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={syncAllToDb} disabled={syncing} className="bg-muted hover:bg-muted/80 text-foreground px-4 py-2.5 rounded-full text-xs font-semibold flex items-center gap-2 border transition disabled:opacity-50">
-            {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5 text-primary" />}
-            {syncing ? "Syncing..." : "Sync All 39 to Database"}
-          </button>
           <button onClick={() => { setEditing({ ...empty }); setPreviewUrl(null); }} className="bg-primary text-primary-foreground px-5 py-2.5 rounded-full text-sm font-semibold flex items-center gap-2 shadow-lg hover:opacity-90 transition"><Plus className="w-4 h-4" /> Add Product</button>
         </div>
       </div>
