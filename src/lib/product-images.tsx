@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { syncProductsFromSupabase } from "@/lib/products";
 
 type Ctx = { map: Record<string, string>; gallery: Record<string, string[]>; loading: boolean };
 const ProductImagesCtx = createContext<Ctx>({ map: {}, gallery: {}, loading: true });
@@ -11,6 +12,7 @@ export function ProductImagesProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const load = async () => {
+      await syncProductsFromSupabase();
       const { data } = await supabase.from("products").select("id,slug,image_url,images");
       const m: Record<string, string> = {};
       const g: Record<string, string[]> = {};
