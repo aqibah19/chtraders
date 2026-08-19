@@ -53,11 +53,11 @@ export function Footer() {
       </div>
       <div className="border-t border-white/10">
         <div className="container mx-auto px-4 sm:px-6 py-5 flex flex-col sm:flex-row gap-3 justify-between items-center text-xs opacity-80 text-center sm:text-left">
-          <span>© {new Date().getFullYear()} CH TRADERS. All rights reserved.</span>
-          <div className="text-center sm:text-right">
+          <div className="text-center sm:text-left">
             <div>Designed And Developed By <span className="text-gold font-semibold">Aqib Ahmed</span></div>
             <div className="text-[11px] opacity-90 mt-0.5">Contact: <a href="mailto:aqibah50@gmail.com" className="hover:text-gold transition">aqibah50@gmail.com</a></div>
           </div>
+          <span className="text-center sm:text-right">© {new Date().getFullYear()} CH TRADERS. All rights reserved.</span>
         </div>
       </div>
     </footer>

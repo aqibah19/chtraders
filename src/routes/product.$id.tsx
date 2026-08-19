@@ -20,7 +20,9 @@ function ProductPage() {
   const { displayOnly } = useSiteSettings();
   const [qty, setQty] = useState(1);
   const [zoom, setZoom] = useState(false);
-  const dbImg = useProductImage(id);
+  const dbImg = useProductImage(id) || (p ? useProductImage(p.slug) : null);
+  const imageSrc = (p?.image && p.image.startsWith("/products/")) ? p.image : (dbImg || p?.image);
+
   const gallery = useProductGallery(id);
   const [activeIdx, setActiveIdx] = useState(0);
   const [api, setApi] = useState<CarouselApi>();
@@ -75,7 +77,7 @@ function ProductPage() {
           ) : (
             <div className="aspect-square rounded-3xl overflow-hidden border bg-muted" onMouseEnter={() => setZoom(true)} onMouseLeave={() => setZoom(false)}>
               <div className={`w-full h-full transition-transform duration-500 ${zoom ? "scale-110" : "scale-100"}`}>
-                <ProductImage category={p.category} size="lg" src={p.image || dbImg} fit="contain" />
+                <ProductImage category={p.category} size="lg" src={imageSrc} fit="contain" />
               </div>
             </div>
           )}

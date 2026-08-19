@@ -11,16 +11,21 @@ export function ProductImagesProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.from("products").select("slug,image_url,images");
+      const { data } = await supabase.from("products").select("id,slug,image_url,images");
       const m: Record<string, string> = {};
       const g: Record<string, string[]> = {};
       (data ?? []).forEach((p: any) => {
-        if (!p.slug) return;
         const imgs: string[] = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
         const main = p.image_url || imgs[0];
-        if (main) m[p.slug] = main;
+        if (main) {
+          if (p.slug) m[p.slug] = main;
+          if (p.id) m[p.id] = main;
+        }
         const all = Array.from(new Set([main, ...imgs].filter(Boolean))) as string[];
-        if (all.length) g[p.slug] = all;
+        if (all.length) {
+          if (p.slug) g[p.slug] = all;
+          if (p.id) g[p.id] = all;
+        }
       });
       setMap(m);
       setGallery(g);

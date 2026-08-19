@@ -49,7 +49,7 @@ export const products: Product[] = [
     rating: 4.6,
     reviews: 92,
     description: "National HAA classic sandwich press with durable non-stick Teflon coating, fast 750W heating, and cool-touch housing.",
-    image: "https://images.unsplash.com/photo-1550547660-d9450f859349?w=800&auto=format&fit=crop"
+    image: "/products/haa-319.jpg"
   },
   {
     id: "haa-320",
