@@ -563,37 +563,30 @@ export async function syncProductsFromSupabase() {
   try {
     const { supabase } = await import("@/integrations/supabase/client");
     const { data, error } = await supabase.from("products").select("*");
-    if (error || !data || data.length === 0) return;
+    if (error || !data) return;
 
-    const dbItems: Product[] = data.map((d: any) => {
-      const match = products.find((p) => p.id === d.slug || p.id === d.id);
-      const img = d.image_url || (Array.isArray(d.images) && d.images[0]) || match?.image || "";
-      return {
-        id: d.slug || d.id,
-        name: d.name,
-        model: d.name.match(/HAA-[0-9]+/i)?.[0] || match?.model || d.slug?.toUpperCase() || "",
-        price: Number(d.price) || match?.price || 0,
-        oldPrice: d.old_price ? Number(d.old_price) : match?.oldPrice,
-        category: match?.category || "kitchen-appliances",
-        rating: match?.rating || 4.8,
-        reviews: match?.reviews || 24,
-        badge: d.featured ? "Featured" : match?.badge,
-        description: d.description || match?.description || "",
-        image: img,
-      };
-    });
+    if (data.length > 0) {
+      const dbItems: Product[] = data.map((d: any) => {
+        const match = products.find((p) => p.id === d.slug || p.id === d.id);
+        const img = d.image_url || (Array.isArray(d.images) && d.images[0]) || match?.image || "";
+        return {
+          id: d.slug || d.id,
+          name: d.name,
+          model: d.name.match(/HAA-[0-9]+/i)?.[0] || match?.model || d.slug?.toUpperCase() || "",
+          price: Number(d.price) || match?.price || 0,
+          oldPrice: d.old_price ? Number(d.old_price) : match?.oldPrice,
+          category: match?.category || "kitchen-appliances",
+          rating: match?.rating || 4.8,
+          reviews: match?.reviews || 24,
+          badge: d.featured ? "Featured" : match?.badge,
+          description: d.description || match?.description || "",
+          image: img,
+        };
+      });
 
-    const mergedMap = new Map<string, Product>();
-    dbItems.forEach((p) => mergedMap.set(p.id, p));
-    products.forEach((p) => {
-      if (!mergedMap.has(p.id)) {
-        mergedMap.set(p.id, p);
-      }
-    });
-
-    const newList = Array.from(mergedMap.values());
-    products.length = 0;
-    products.push(...newList);
+      products.length = 0;
+      products.push(...dbItems);
+    }
   } catch (e) {
     console.error("Error syncing products from Supabase:", e);
   }

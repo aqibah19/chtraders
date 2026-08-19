@@ -162,15 +162,16 @@ function AdminProducts() {
     }
   };
 
-  const del = async (id: string) => {
-    if (!confirm("Delete this product?")) return;
-    const isRealUuid = id && id.length > 20 && id.includes("-");
-    if (isRealUuid) {
-      const { error } = await supabase.from("products").delete().eq("id", id);
-      if (error) return toast.error(error.message);
+  const del = async (id: string, slug?: string) => {
+    if (!confirm("Are you sure you want to delete this product?")) return;
+    const { error } = await supabase.from("products").delete().or(`id.eq.${id},slug.eq.${id}${slug ? `,slug.eq.${slug}` : ""}`);
+    if (error) {
+      toast.error(error.message);
+      return;
     }
-    toast.success("Removed");
-    setItems((prev) => prev.filter((x) => x.id !== id));
+    toast.success("Product deleted successfully!");
+    setItems((prev) => prev.filter((x) => x.id !== id && x.slug !== id));
+    await syncProductsFromSupabase();
     load();
   };
 
@@ -279,7 +280,7 @@ function AdminProducts() {
                 <td className="p-3">{p.featured ? <span className="px-2 py-0.5 text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-full font-medium">Featured</span> : "No"}</td>
                 <td className="p-3 text-right">
                   <button onClick={() => { setEditing(p); setPreviewUrl(p.image_url); }} className="p-2 hover:text-primary transition" title="Edit"><Pencil className="w-4 h-4" /></button>
-                  <button onClick={() => del(p.id)} className="p-2 hover:text-destructive transition" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                  <button onClick={() => del(p.id, p.slug)} className="p-2 hover:text-destructive transition" title="Delete"><Trash2 className="w-4 h-4" /></button>
                 </td>
               </tr>
             ))}
